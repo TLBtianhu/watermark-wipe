@@ -1,8 +1,8 @@
-; WatermarkWipe Windows installer (Inno Setup 6)
+﻿; WatermarkWipe Windows installer (Inno Setup 6)
 ; Build: ISCC.exe installer.iss
 
 #define MyAppName "WatermarkWipe"
-#define MyAppVersion "1.0.1"
+#define MyAppVersion "1.0.2"
 #define MyAppPublisher "TLBtianhu"
 #define MyAppURL "https://github.com/TLBtianhu/watermark-wipe"
 #define MyAppExeName "WatermarkWipe.exe"
@@ -33,7 +33,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
 UninstallDisplayIcon={app}\{#MyAppExeName}
-VersionInfoVersion=1.0.1.0
+VersionInfoVersion=1.0.2.0
 VersionInfoDescription=WatermarkWipe Setup
 
 [Tasks]
@@ -50,3 +50,4 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDi
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
+

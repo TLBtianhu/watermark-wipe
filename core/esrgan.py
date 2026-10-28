@@ -99,9 +99,75 @@ class RealESRGANUpscaler:
         out = out[: orig_h * real_scale, : orig_w * real_scale]
         return out
 
-    def upscale(self, image: np.ndarray, outscale: float = 4.0) -> tuple[np.ndarray, float]:
-        """返回 (放大后的图, 实际倍数)。"""
+    def _normalize_target(self, target_size: tuple[int, int]) -> tuple[int, int]:
+        tw, th = int(target_size[0]), int(target_size[1])
+        tw, th = max(64, tw), max(64, th)
+        longest = max(tw, th)
+        if longest > MAX_OUTPUT_SIDE:
+            f = MAX_OUTPUT_SIDE / float(longest)
+            tw, th = max(64, int(round(tw * f))), max(64, int(round(th * f)))
+        return tw, th
+
+    def _apply_target(self, out: np.ndarray, tw: int, th: int, fit: str) -> np.ndarray:
+        h, w = out.shape[:2]
+        if fit == "stretch":
+            return cv2.resize(out, (tw, th), interpolation=cv2.INTER_LANCZOS4)
+
+        if fit == "cover":
+            f = max(tw / float(w), th / float(h))
+            rw, rh = max(tw, int(round(w * f))), max(th, int(round(h * f)))
+            resized = cv2.resize(out, (rw, rh), interpolation=cv2.INTER_LANCZOS4)
+            x = (rw - tw) // 2
+            y = (rh - th) // 2
+            return resized[y : y + th, x : x + tw]
+
+        # contain / pad：先等比缩放到目标框内
+        f = min(tw / float(w), th / float(h))
+        rw, rh = max(1, int(round(w * f))), max(1, int(round(h * f)))
+        resized = cv2.resize(out, (rw, rh), interpolation=cv2.INTER_LANCZOS4)
+        if fit != "pad":
+            return resized
+        canvas = np.zeros((th, tw, 3), dtype=np.uint8)
+        x = (tw - rw) // 2
+        y = (th - rh) // 2
+        canvas[y : y + rh, x : x + rw] = resized
+        return canvas
+
+    def upscale(
+        self,
+        image: np.ndarray,
+        outscale: float = 4.0,
+        target_size: tuple[int, int] | None = None,
+        fit: str = "contain",
+    ) -> tuple[np.ndarray, float]:
+        """返回 (放大后的图, 实际倍数)。
+
+        target_size 非空时按目标分辨率输出，fit 控制尺寸适配方式。
+        """
         h, w = image.shape[:2]
+
+        if target_size is not None:
+            tw, th = self._normalize_target(target_size)
+            if fit in ("contain", "pad"):
+                needed = min(tw / float(w), th / float(h))
+            else:
+                needed = max(tw / float(w), th / float(h))
+
+            if needed <= 1.01:
+                out = image.copy()
+            else:
+                model_scale = 2 if needed <= 2.0 else 4
+                out = self._upscale_with_model(image, model_scale)
+
+            out = self._apply_target(out, tw, th, fit)
+            actual = float(out.shape[1]) / float(w)
+
+            if self.device.type == "cuda":
+                torch.cuda.empty_cache()
+            else:
+                gc.collect()
+            return out, actual
+
         target = float(outscale)
         max_allowed = MAX_OUTPUT_SIDE / float(max(h, w))
         target = min(target, max_allowed)

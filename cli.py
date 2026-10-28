@@ -9,6 +9,7 @@ from pathlib import Path
 import cv2
 
 from core.pipeline import OUTPUT_DIR, WatermarkNotFound, WatermarkSRPipeline
+from core.sizing import PRESETS, resolve_output
 from core.utils import imread_unicode, imwrite_unicode
 from core.video import extract_first_frame, is_video, process_video
 
@@ -23,6 +24,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "-s", "--scale", type=float, default=None, choices=[1, 2, 4],
         help="超分倍数：1/2/4（默认图片 2，视频 1）",
+    )
+    p.add_argument("--target", choices=list(PRESETS.keys()), help="目标分辨率预设：720p/1080p/2k/4k/8k")
+    p.add_argument("--width", type=int, help="自定义目标宽度（需同时提供 --height）")
+    p.add_argument("--height", type=int, help="自定义目标高度（需同时提供 --width）")
+    p.add_argument(
+        "--fit", choices=["contain", "pad", "stretch", "cover"], default="contain",
+        help="目标尺寸适配：contain/pad/stretch/cover，默认 contain",
     )
     p.add_argument("-c", "--conf", type=float, default=0.25, help="水印检测置信度阈值，默认 0.25")
     p.add_argument("-e", "--expand", type=int, default=8, help="遮罩向外扩展像素，默认 8")
@@ -61,6 +69,18 @@ def _load_mask(path: str | None):
     return cv2.cvtColor(imread_unicode(path), cv2.COLOR_RGB2GRAY)
 
 
+def resolve_target(args) -> tuple[int, int] | None:
+    if args.target:
+        return PRESETS[args.target]
+    if args.width is not None or args.height is not None:
+        if args.width is None or args.height is None:
+            raise ValueError("--width 和 --height 必须同时提供。")
+        if not (64 <= int(args.width) <= 8192 and 64 <= int(args.height) <= 8192):
+            raise ValueError("--width/--height 需在 64–8192 之间。")
+        return int(args.width), int(args.height)
+    return None
+
+
 def _video_progress():
     last = [-10]
 
@@ -73,7 +93,13 @@ def _video_progress():
     return report
 
 
-def run_video(pipeline: WatermarkSRPipeline, src: Path, args, mask) -> int:
+def run_video(
+    pipeline: WatermarkSRPipeline,
+    src: Path,
+    args,
+    mask,
+    target_size: tuple[int, int] | None = None,
+) -> int:
     frame = extract_first_frame(src)
     if mask is None:
         _b, _s, mask = pipeline.detect(frame, conf=args.conf, expand=args.expand)
@@ -82,16 +108,22 @@ def run_video(pipeline: WatermarkSRPipeline, src: Path, args, mask) -> int:
             return 1
 
     out_path = resolve_video_output(args.output, src)
-    print(f"处理视频: {src.name}  ({frame.shape[1]}x{frame.shape[0]}, 模式={args.mode})", flush=True)
+    target_text = f"目标 {target_size[0]}x{target_size[1]}" if target_size else f"倍数 {args.scale or 1:g}x"
+    print(
+        f"处理视频: {src.name}  ({frame.shape[1]}x{frame.shape[0]}, 模式={args.mode}, {target_text})",
+        flush=True,
+    )
     try:
         _, info = process_video(
             src,
             mask=mask,
-            scale=float(args.scale if args.scale is not None else 1),
+            scale=1.0 if target_size else float(args.scale if args.scale is not None else 1),
             conf=args.conf,
             expand=args.expand,
             mode=args.mode,
             preview_seconds=args.preview,
+            target_size=target_size,
+            fit=args.fit,
             output_path=out_path,
             pipeline=pipeline,
             progress=_video_progress(),
@@ -121,6 +153,11 @@ def main() -> int:
 
     pipeline = WatermarkSRPipeline(device=args.device)
     mask = _load_mask(args.mask)
+    try:
+        target_size = resolve_target(args)
+    except ValueError as exc:
+        print(f"参数错误：{exc}")
+        return 2
 
     if src.is_dir():
         out_dir = Path(args.output) if args.output else OUTPUT_DIR
@@ -130,14 +167,20 @@ def main() -> int:
             print("文件夹中没有找到图片（批量文件夹目前只处理图片）。")
             return 2
         ok = 0
-        scale = float(args.scale if args.scale is not None else 2)
+        scale = 1.0 if target_size else float(args.scale if args.scale is not None else 2)
         for i, f in enumerate(files, 1):
             out_path = out_dir / f"{f.stem}_clean_sr.png"
             print(f"[{i}/{len(files)}] {f.name} ...", flush=True)
             try:
                 image = imread_unicode(str(f))
                 result, info = pipeline.process(
-                    image, mask=None, scale=scale, conf=args.conf, expand=args.expand
+                    image,
+                    mask=None,
+                    scale=scale,
+                    conf=args.conf,
+                    expand=args.expand,
+                    target_size=target_size,
+                    fit=args.fit,
                 )
                 imwrite_unicode(str(out_path), result)
                 print(
@@ -153,14 +196,20 @@ def main() -> int:
         return 0 if ok else 1
 
     if is_video(src):
-        return run_video(pipeline, src, args, mask)
+        return run_video(pipeline, src, args, mask, target_size)
 
-    scale = float(args.scale if args.scale is not None else 2)
+    scale = 1.0 if target_size else float(args.scale if args.scale is not None else 2)
     out_path = resolve_image_output(args.output, src)
     try:
         image = imread_unicode(str(src))
         result, info = pipeline.process(
-            image, mask=mask, scale=scale, conf=args.conf, expand=args.expand
+            image,
+            mask=mask,
+            scale=scale,
+            conf=args.conf,
+            expand=args.expand,
+            target_size=target_size,
+            fit=args.fit,
         )
     except WatermarkNotFound as exc:
         print(f"失败：{exc}")

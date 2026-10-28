@@ -122,6 +122,8 @@ def process_video(
     expand: int = 8,
     mode: str = "fixed",
     preview_seconds: float = 0,
+    target_size: tuple[int, int] | None = None,
+    fit: str = "contain",
     output_path: str | Path | None = None,
     pipeline: WatermarkSRPipeline | None = None,
     progress=None,
@@ -223,7 +225,11 @@ def process_video(
             else:
                 cleaned = rgb
 
-            if float(scale) > 1.01:
+            if target_size is not None:
+                cleaned, actual_scale = pipeline.upscaler.upscale(
+                    cleaned, target_size=target_size, fit=fit
+                )
+            elif float(scale) > 1.01:
                 cleaned, actual_scale = pipeline.upscaler.upscale(cleaned, float(scale))
 
             cv2.imwrite(
@@ -284,6 +290,8 @@ def process_video(
             "input_size": [w, h],
             "output_size": [out_w, out_h],
             "scale": round(float(actual_scale), 3),
+            "target_size": list(target_size) if target_size is not None else None,
+            "fit": fit if target_size is not None else None,
             "audio": bool(audio_ok),
             "mode": mode,
             "output_path": str(output_path),

@@ -103,6 +103,8 @@ class WatermarkSRPipeline:
         scale: float = 2,
         conf: float = 0.25,
         expand: int = 6,
+        target_size: tuple[int, int] | None = None,
+        fit: str = "contain",
         progress=None,
     ) -> tuple[np.ndarray, dict]:
         """去水印并超分。
@@ -154,7 +156,15 @@ class WatermarkSRPipeline:
         timings["inpaint"] = time.perf_counter() - t0
 
         actual_scale = 1.0
-        if float(scale) > 1.01:
+        if target_size is not None:
+            if progress:
+                progress(0.55, desc=f"Real-ESRGAN 超分到 {target_size[0]}×{target_size[1]}…")
+            t0 = time.perf_counter()
+            result, actual_scale = self.upscaler.upscale(
+                cleaned, target_size=target_size, fit=fit
+            )
+            timings["upscale"] = time.perf_counter() - t0
+        elif float(scale) > 1.01:
             if progress:
                 progress(0.55, desc=f"Real-ESRGAN x{int(scale)} 超分中…")
             t0 = time.perf_counter()
@@ -168,6 +178,8 @@ class WatermarkSRPipeline:
             {
                 "output_size": [int(result.shape[1]), int(result.shape[0])],
                 "scale": round(float(actual_scale), 3),
+                "target_size": list(target_size) if target_size is not None else None,
+                "fit": fit if target_size is not None else None,
                 "timings": {k: round(v, 2) for k, v in timings.items()},
             }
         )
@@ -183,6 +195,8 @@ class WatermarkSRPipeline:
         conf: float = 0.25,
         expand: int = 6,
         mask_path: str | None = None,
+        target_size: tuple[int, int] | None = None,
+        fit: str = "contain",
     ) -> tuple[str, dict]:
         from .utils import imread_unicode, imwrite_unicode
 
@@ -192,7 +206,10 @@ class WatermarkSRPipeline:
             import cv2
 
             mask = cv2.cvtColor(imread_unicode(mask_path), cv2.COLOR_RGB2GRAY)
-        result, info = self.process(image, mask=mask, scale=scale, conf=conf, expand=expand)
+        result, info = self.process(
+            image, mask=mask, scale=scale, conf=conf, expand=expand,
+            target_size=target_size, fit=fit,
+        )
         if output_path is None:
             OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
             stem = Path(input_path).stem

@@ -1,6 +1,6 @@
-# WatermarkWipe · 一键去水印 + 超分
+﻿# WatermarkWipe · 一键去水印 + 超分
 
-本地运行的图片 / 视频去水印与超分工具：**上传 → 自动检测水印 → LaMa 修复 → Real-ESRGAN 2×/4× 放大**。
+本地运行的图片 / 视频去水印与超分工具：**上传 → 自动检测水印 → LaMa 修复 → Real-ESRGAN 放大到 2×/4× 或指定分辨率**。
 
 支持单张精修、批量图片、视频逐帧处理；视频自动保留原声。全程本地运行，文件不会上传到任何服务器。
 
@@ -10,7 +10,8 @@
 
 - **自动检测水印/Logo**：YOLO11x 专用水印检测模型，支持角标、文字水印、Logo，中英文均可。
 - **LaMa 智能修复**：大遮罩修复，自动补全被水印遮挡的背景。
-- **Real-ESRGAN 超分**：2 倍 / 4 倍，分块推理，适配 8GB 显存。
+- **Real-ESRGAN 超分**：2 倍 / 4 倍，或直接指定 720p / 1080p / 2K / 4K / 8K，也可以自定义宽高。
+- **尺寸适配**：等比适配、留黑边、拉伸、裁剪填满，四种方式处理不同宽高比。
 - **视频处理**：逐帧去水印 + 可选超分，自动保留音轨，输出 H.264 MP4。
 - **手动兜底**：检测不到或框选不准时，用画笔补充、橡皮擦修正。
 - **单张 / 批量 / 视频**：网页三个标签页；命令行支持图片、视频和整个文件夹。
@@ -51,8 +52,8 @@ start.bat
 
 不想装 Python，可以从 [Releases](https://github.com/TLBtianhu/watermark-wipe/releases/latest) 下载安装包：
 
-- `WatermarkWipe-v1.0.1-win64-Setup.exe`
-- `WatermarkWipe-v1.0.1-win64-Setup-1.bin`
+- `WatermarkWipe-v1.0.2-win64-Setup.exe`
+- `WatermarkWipe-v1.0.2-win64-Setup-1.bin`
 - 如果有 `...-Setup-2.bin` 也一起下载
 
 把全部文件放在**同一个文件夹**，双击 `Setup.exe` 安装。
@@ -84,18 +85,30 @@ python app.py
 1. 打开「单张处理」标签，上传图片。
 2. 程序自动检测水印，红色区域 = 会被修复。
 3. 检测不准时用画笔补充、橡皮擦修正。
-4. 选择超分倍数，点 **🚀 一键去水印 + 超分**。
-5. 右侧下载 PNG。
+4. 在「输出尺寸」选择 2×/4×，或 720p / 1080p / 2K / 4K / 8K / 自定义分辨率。
+5. 点 **🚀 一键去水印 + 超分**，右侧下载 PNG。
 
 | 控件 | 说明 |
 | --- | --- |
 | 检测灵敏度 | 默认 0.25；检测不到调到 0.10–0.15，误检多时调高 |
 | 遮罩外扩 | 默认 8px，把水印边缘也盖住，避免残留 |
-| 超分倍数 | 仅去水印选“不放大”；一般 2 倍；4 倍适合小图 |
+| 输出尺寸 | 2×/4×，或 720p/1080p/2K/4K/8K/自定义宽高 |
+| 目标尺寸适配 | 仅指定分辨率时生效：等比适配 / 留黑边 / 拉伸 / 裁剪填满 |
+
+**目标尺寸适配说明**
+
+| 模式 | 行为 | 输出尺寸 |
+| --- | --- | --- |
+| 等比适配（推荐） | 保持宽高比，完整画面缩放到目标框内 | 可能略小于目标 |
+| 留黑边 | 等比缩放后居中放到目标画布 | 严格等于目标，可能有黑边 |
+| 拉伸 | 直接拉伸到目标 | 严格等于目标，可能变形 |
+| 裁剪填满 | 等比放大到覆盖目标后居中裁剪 | 严格等于目标，会裁掉边缘 |
+
+例如 3:2 图片选 1080p + 等比适配，会输出约 `1619×1080`；选留黑边/拉伸/裁剪才会严格 `1920×1080`。
 
 ### 批量处理
 
-切到「批量处理」标签，一次选择多张图片，设置倍数后点「开始批量处理」。完成后下载 ZIP；单张失败不会中断整批。
+切到「批量处理」标签，一次选择多张图片，设置输出尺寸后点「开始批量处理」。完成后下载 ZIP；单张失败不会中断整批。
 
 ![批量处理](assets/ui_batch.png)
 
@@ -106,7 +119,7 @@ python app.py
 1. 上传 MP4 / MOV / MKV / AVI / WebM。
 2. 自动检测**首帧**水印，红色遮罩会应用到整段视频。
 3. 检测不准时用画笔修正。
-4. 选择超分倍数（建议先用 1× 检查去水印效果）。
+4. 选择输出尺寸（建议先用 1× 或 1080p 检查去水印效果）。
 5. 长视频先把「只处理前 N 秒」设为 5–10 秒预览。
 6. 点 **🚀 开始处理视频**，完成后播放或下载 MP4。
 
@@ -127,6 +140,12 @@ python app.py
 :: 单张图片，2 倍超分
 .\venv\Scripts\python.exe cli.py 图片.jpg -s 2
 
+:: 指定 1080p（等比适配）
+.\venv\Scripts\python.exe cli.py 图片.jpg --target 1080p
+
+:: 自定义 2560x1440，严格拉伸到目标
+.\venv\Scripts\python.exe cli.py 图片.jpg --width 2560 --height 1440 --fit stretch
+
 :: 整个文件夹批量处理
 .\venv\Scripts\python.exe cli.py 某个文件夹 -s 2 -o output\批量结果
 
@@ -139,14 +158,14 @@ python app.py
 :: 视频默认 1 倍（仅去水印），自动保留音频
 .\venv\Scripts\python.exe cli.py 视频.mp4
 
-:: 视频 2 倍，只处理前 5 秒预览
-.\venv\Scripts\python.exe cli.py 视频.mp4 -s 2 --preview 5
+:: 视频 1080p，只处理前 5 秒预览
+.\venv\Scripts\python.exe cli.py 视频.mp4 --target 1080p --preview 5
 
 :: 移动水印：逐帧检测
 .\venv\Scripts\python.exe cli.py 视频.mp4 --mode per_frame --preview 10
 ```
 
-常用参数：`-c` 检测阈值、`-e` 遮罩外扩、`--preview` 视频预览秒数、`--mode fixed/per_frame`、`--device cpu` 强制 CPU。
+常用参数：`-c` 检测阈值、`-e` 遮罩外扩、`--target 720p/1080p/2k/4k/8k`、`--width/--height` 自定义分辨率、`--fit contain/pad/stretch/cover`、`--preview` 视频预览秒数、`--mode fixed/per_frame`、`--device cpu` 强制 CPU。
 
 ## 模型
 
@@ -198,7 +217,8 @@ watermark-wipe/
 │  ├─ pipeline.py          # 检测 → 修复 → 超分 流水线
 │  ├─ detector.py          # YOLO11x 水印检测
 │  ├─ lama.py              # LaMa 修复（支持局部裁剪加速）
-│  ├─ esrgan.py            # Real-ESRGAN 超分
+│  ├─ esrgan.py            # Real-ESRGAN 超分（倍数/目标分辨率）
+│  ├─ sizing.py            # 分辨率预设与输出尺寸解析
 │  ├─ video.py             # 抽帧、逐帧处理、音频重编码
 │  └─ utils.py             # 中文路径、EXIF、遮罩处理
 ├─ models/README.md        # 模型说明（权重不入库）
@@ -229,7 +249,7 @@ build.bat
 ISCC.exe installer.iss
 ```
 
-输出 `release\WatermarkWipe-v1.0.1-win64-Setup.exe` 和同目录的 `.bin` 分卷，安装包总体积约 2.3GB。
+输出 `release\WatermarkWipe-v1.0.2-win64-Setup.exe` 和同目录的 `.bin` 分卷，安装包总体积约 2.3GB。
 
 ## 常见问题
 
@@ -269,3 +289,4 @@ ISCC.exe installer.iss
 - 程序只监听 `127.0.0.1`，不会暴露到局域网。
 
 如果这个项目对你有帮助，欢迎 Star ⭐
+

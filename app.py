@@ -13,9 +13,11 @@ import numpy as np
 
 from core.paths import ROOT
 from core.pipeline import OUTPUT_DIR, WatermarkNotFound, WatermarkSRPipeline
+from core.sizing import FIT_CHOICES, OUTPUT_CHOICES, resolve_output
 from core.utils import imread_unicode, imwrite_unicode, mask_from_editor, mask_to_rgba, overlay_mask
 from core.video import extract_first_frame, probe_video, process_video
 
+FIT_LABEL = {value: label for label, value in FIT_CHOICES}
 pipeline = WatermarkSRPipeline()
 
 CSS = """
@@ -86,10 +88,27 @@ def _save_result(result: np.ndarray, tag: str = "result") -> Path:
     return path
 
 
-def on_run(image, editor_value, scale, conf, expand, progress=gr.Progress()):
+def on_run(
+    image,
+    editor_value,
+    size_choice,
+    fit_mode,
+    target_w,
+    target_h,
+    conf,
+    expand,
+    progress=gr.Progress(),
+):
     if image is None:
         gr.Warning("请先上传图片")
         return None, None, "请先上传图片。"
+
+    try:
+        scale, target = resolve_output(size_choice, target_w, target_h)
+    except ValueError as exc:
+        gr.Warning(str(exc))
+        return None, None, f"⚠️ {exc}"
+
     image = np.asarray(image)
     mask = mask_from_editor(editor_value, image.shape[:2])
 
@@ -101,6 +120,8 @@ def on_run(image, editor_value, scale, conf, expand, progress=gr.Progress()):
             scale=float(scale),
             conf=float(conf),
             expand=int(expand),
+            target_size=target,
+            fit=str(fit_mode),
             progress=progress,
         )
     except WatermarkNotFound as exc:
@@ -113,10 +134,13 @@ def on_run(image, editor_value, scale, conf, expand, progress=gr.Progress()):
     out_path = _save_result(result)
     timings = info.get("timings", {})
     w, h = info["output_size"]
-    scale_text = f"{info['scale']:g}×"
+    if target is not None:
+        size_desc = f"{target[0]}×{target[1]}（{FIT_LABEL.get(str(fit_mode), fit_mode)}）"
+    else:
+        size_desc = f"{info['scale']:g}×"
     boxes_text = f"自动检测 {info['boxes']} 处" if info.get("auto_detected") else "遮罩区域"
     status = (
-        f"✅ **完成** · 修复 {boxes_text} · 超分 {scale_text} · "
+        f"✅ **完成** · 修复 {boxes_text} · 超分 {size_desc} · "
         f"输出 {w}×{h} · 总耗时 {time.time() - t0:.1f}s\n\n"
         f"<sub>检测 {timings.get('detect', 0)}s · 修复 {timings.get('inpaint', 0)}s · "
         f"超分 {timings.get('upscale', 0)}s · 已保存到 output/</sub>"
@@ -124,10 +148,24 @@ def on_run(image, editor_value, scale, conf, expand, progress=gr.Progress()):
     return result, str(out_path), status
 
 
-def on_batch(files, scale, conf, expand, progress=gr.Progress()):
+def on_batch(
+    files,
+    size_choice,
+    fit_mode,
+    target_w,
+    target_h,
+    conf,
+    expand,
+    progress=gr.Progress(),
+):
     if not files:
         gr.Warning("请先选择图片")
         return None, "请先选择要批量处理的图片。"
+
+    try:
+        scale, target = resolve_output(size_choice, target_w, target_h)
+    except ValueError as exc:
+        return None, f"⚠️ {exc}"
 
     paths: list[str] = []
     for f in files:
@@ -146,7 +184,7 @@ def on_batch(files, scale, conf, expand, progress=gr.Progress()):
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_dir = OUTPUT_DIR / f"batch_{stamp}"
     out_dir.mkdir(parents=True, exist_ok=True)
-    suffix = "_clean_sr" if float(scale) > 1 else "_clean"
+    suffix = "_clean_sr" if (float(scale) > 1 or target is not None) else "_clean"
 
     saved: list[Path] = []
     errors: list[str] = []
@@ -156,7 +194,13 @@ def on_batch(files, scale, conf, expand, progress=gr.Progress()):
         try:
             image = imread_unicode(path)
             result, _info = pipeline.process(
-                image, mask=None, scale=float(scale), conf=float(conf), expand=int(expand)
+                image,
+                mask=None,
+                scale=float(scale),
+                conf=float(conf),
+                expand=int(expand),
+                target_size=target,
+                fit=str(fit_mode),
             )
             stem = Path(path).stem
             out_path = out_dir / f"{stem}{suffix}.png"
@@ -179,8 +223,12 @@ def on_batch(files, scale, conf, expand, progress=gr.Progress()):
         for p in saved:
             zf.write(p, arcname=p.name)
 
+    if target is not None:
+        size_desc = f"{target[0]}×{target[1]}（{FIT_LABEL.get(str(fit_mode), fit_mode)}）"
+    else:
+        size_desc = f"{float(scale):g}×"
     status = (
-        f"✅ **批量完成 {len(saved)}/{total} 张** · 超分 {float(scale):g}× · "
+        f"✅ **批量完成 {len(saved)}/{total} 张** · 超分 {size_desc} · "
         f"结果已打包。\n\n"
         f"<sub>图片保存在 output/{out_dir.name}/，ZIP 在 output/ 下。</sub>"
     )
@@ -234,7 +282,10 @@ def on_video_upload(video_path, conf, expand):
 def on_video_run(
     video_path,
     editor_value,
-    scale,
+    size_choice,
+    fit_mode,
+    target_w,
+    target_h,
     mode,
     conf,
     expand,
@@ -244,6 +295,12 @@ def on_video_run(
     if not video_path:
         gr.Warning("请先上传视频")
         return None, None, "请先上传视频。"
+
+    try:
+        scale, target = resolve_output(size_choice, target_w, target_h)
+    except ValueError as exc:
+        gr.Warning(str(exc))
+        return None, None, f"⚠️ {exc}"
 
     t0 = time.time()
     try:
@@ -263,6 +320,8 @@ def on_video_run(
             expand=int(expand),
             mode=str(mode),
             preview_seconds=float(preview_seconds or 0),
+            target_size=target,
+            fit=str(fit_mode),
             pipeline=pipeline,
             progress=progress,
         )
@@ -276,9 +335,13 @@ def on_video_run(
     timings = info.get("timings", {})
     w, h = info["output_size"]
     in_w, in_h = info["input_size"]
+    if target is not None:
+        size_desc = f"{target[0]}×{target[1]}（{FIT_LABEL.get(str(fit_mode), fit_mode)}）"
+    else:
+        size_desc = f"{info['scale']:g}×"
     status = (
         f"✅ **视频处理完成** · {info['frames']} 帧 / {info['duration']:g} 秒 · "
-        f"{in_w}×{in_h} → {w}×{h} · 超分 {info['scale']:g}× · "
+        f"{in_w}×{in_h} → {w}×{h} · 超分 {size_desc} · "
         f"{'音频保留' if info['audio'] else '无音频'}\n\n"
         f"<sub>抽帧 {timings.get('extract', 0)}s · 逐帧处理 {timings.get('process', 0)}s · "
         f"编码 {timings.get('encode', 0)}s · 总耗时 {time.time() - t0:.1f}s</sub>"
@@ -325,11 +388,19 @@ def build_ui() -> gr.Blocks:
                         with gr.Row():
                             conf = gr.Slider(0.10, 0.90, value=0.25, step=0.05, label="检测灵敏度")
                             expand = gr.Slider(0, 40, value=8, step=1, label="遮罩外扩 px")
-                        scale = gr.Radio(
-                            choices=[("不放大（仅去水印）", 1), ("2 倍", 2), ("4 倍", 4)],
-                            value=2,
-                            label="2. 超分倍数",
-                            info="4K 大图建议选 2 倍；输出最长边上限 8192px。",
+                        size_choice = gr.Dropdown(
+                            choices=OUTPUT_CHOICES,
+                            value="2",
+                            label="2. 输出尺寸",
+                            info="可选 1080p / 2K / 4K，或自定义分辨率",
+                        )
+                        with gr.Row():
+                            target_w = gr.Number(value=1920, label="自定义宽", precision=0, minimum=64, maximum=8192)
+                            target_h = gr.Number(value=1080, label="自定义高", precision=0, minimum=64, maximum=8192)
+                        fit_mode = gr.Dropdown(
+                            choices=FIT_CHOICES,
+                            value="contain",
+                            label="目标尺寸适配",
                         )
                         with gr.Row():
                             btn_detect = gr.Button("重新检测", variant="secondary")
@@ -383,11 +454,19 @@ def build_ui() -> gr.Blocks:
                     height=220,
                 )
                 with gr.Row():
-                    batch_scale = gr.Radio(
-                        choices=[("不放大（仅去水印）", 1), ("2 倍", 2), ("4 倍", 4)],
-                        value=2,
-                        label="超分倍数",
+                    batch_size_choice = gr.Dropdown(
+                        choices=OUTPUT_CHOICES,
+                        value="2",
+                        label="输出尺寸",
                     )
+                    batch_fit = gr.Dropdown(
+                        choices=FIT_CHOICES,
+                        value="contain",
+                        label="目标尺寸适配",
+                    )
+                with gr.Row():
+                    batch_w = gr.Number(value=1920, label="宽", precision=0, minimum=64, maximum=8192)
+                    batch_h = gr.Number(value=1080, label="高", precision=0, minimum=64, maximum=8192)
                     batch_conf = gr.Slider(0.10, 0.90, value=0.25, step=0.05, label="检测灵敏度")
                     batch_expand = gr.Slider(0, 40, value=8, step=1, label="遮罩外扩 px")
                 with gr.Row():
@@ -410,18 +489,25 @@ def build_ui() -> gr.Blocks:
                             include_audio=True,
                         )
                         video_info = gr.Markdown("等待上传视频…")
+                        video_size_choice = gr.Dropdown(
+                            choices=OUTPUT_CHOICES,
+                            value="1",
+                            label="输出尺寸",
+                            info="视频建议先用 1× 检查去水印效果；可选 1080p/2K/4K。",
+                        )
                         with gr.Row():
-                            video_scale = gr.Radio(
-                                choices=[("不放大（仅去水印）", 1), ("2 倍", 2), ("4 倍", 4)],
-                                value=1,
-                                label="超分倍数",
-                                info="视频 2×/4× 很慢，建议先用 1× 检查去水印效果。",
-                            )
-                            video_mode = gr.Radio(
-                                choices=[("固定遮罩（推荐）", "fixed"), ("逐帧检测（慢）", "per_frame")],
-                                value="fixed",
-                                label="水印模式",
-                            )
+                            video_w = gr.Number(value=1920, label="宽", precision=0, minimum=64, maximum=8192)
+                            video_h = gr.Number(value=1080, label="高", precision=0, minimum=64, maximum=8192)
+                        video_fit = gr.Dropdown(
+                            choices=FIT_CHOICES,
+                            value="contain",
+                            label="目标尺寸适配",
+                        )
+                        video_mode = gr.Radio(
+                            choices=[("固定遮罩（推荐）", "fixed"), ("逐帧检测（慢）", "per_frame")],
+                            value="fixed",
+                            label="水印模式",
+                        )
                         with gr.Row():
                             video_conf = gr.Slider(0.10, 0.90, value=0.25, step=0.05, label="检测灵敏度")
                             video_expand = gr.Slider(0, 40, value=8, step=1, label="遮罩外扩 px")
@@ -473,13 +559,13 @@ def build_ui() -> gr.Blocks:
         btn_clear.click(on_clear, inputs=[image_in], outputs=[editor, status])
         btn_run.click(
             on_run,
-            inputs=[image_in, editor, scale, conf, expand],
+            inputs=[image_in, editor, size_choice, fit_mode, target_w, target_h, conf, expand],
             outputs=[image_out, file_out, status_run],
         )
         btn_open.click(on_open_folder, outputs=[status_run])
         btn_batch.click(
             on_batch,
-            inputs=[batch_files, batch_scale, batch_conf, batch_expand],
+            inputs=[batch_files, batch_size_choice, batch_fit, batch_w, batch_h, batch_conf, batch_expand],
             outputs=[batch_zip, batch_status],
         )
         btn_batch_open.click(on_open_folder, outputs=[batch_status])
@@ -495,7 +581,18 @@ def build_ui() -> gr.Blocks:
         )
         btn_video.click(
             on_video_run,
-            inputs=[video_in, video_editor, video_scale, video_mode, video_conf, video_expand, video_preview],
+            inputs=[
+                video_in,
+                video_editor,
+                video_size_choice,
+                video_fit,
+                video_w,
+                video_h,
+                video_mode,
+                video_conf,
+                video_expand,
+                video_preview,
+            ],
             outputs=[video_out, video_file, video_status],
         )
         btn_video_open.click(on_open_folder, outputs=[video_status])
