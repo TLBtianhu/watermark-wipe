@@ -1,0 +1,10 @@
+--extra-index-url https://download.pytorch.org/whl/cu128
+torch==2.9.1+cu128
+torchvision==0.24.1+cu128
+numpy
+opencv-python
+pillow
+gradio==6.31.0
+ultralytics==8.4.191
+spandrel==0.4.2
+imageio-ffmpeg

@@ -1,0 +1,30 @@
+# ---- Python ----
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# ---- 模型权重（用 download_models.py 下载，不进入 Git）----
+models/*.pt
+models/*.pth
+models/*.onnx
+models/*.engine
+
+# ---- 输出结果 ----
+output/*
+!output/.gitkeep
+
+# ---- Gradio / 本地缓存 ----
+.gradio/
+gradio_cached_examples/
+.cache/
+
+# ---- 本地工具与系统文件 ----
+.tools/
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
