@@ -49,15 +49,21 @@ start.bat
 
 ### 方式 B：直接下载 Windows 安装版 EXE
 
-不想装 Python，可以直接从 [Releases](https://github.com/TLBtianhu/watermark-wipe/releases/latest) 下载 `WatermarkWipe-v1.0.1-win64-Setup.exe`，双击安装。
+不想装 Python，可以从 [Releases](https://github.com/TLBtianhu/watermark-wipe/releases/latest) 下载安装包：
+
+- `WatermarkWipe-v1.0.1-win64-Setup.exe`
+- `WatermarkWipe-v1.0.1-win64-Setup-1.bin`
+- 如果有 `...-Setup-2.bin` 也一起下载
+
+把全部文件放在**同一个文件夹**，双击 `Setup.exe` 安装。
 
 安装到 `%LOCALAPPDATA%\Programs\WatermarkWipe`，自动创建开始菜单快捷方式（安装时可勾选桌面快捷方式），完成后可直接启动。
 
-- 已内置 4 个模型，离线可用
+- 已内置 4 个模型，安装后离线可用
 - 需要 Windows 10/11 64 位 + 支持 CUDA 12.8 的 NVIDIA 驱动
 - 首次启动约 10–20 秒（加载 PyTorch/CUDA）
 - 处理结果保存在安装目录的 `output/`
-- 如果杀毒软件误报，请添加信任（PyInstaller / 未签名安装器的常见误报）
+- 安装包较大（约 2.3GB），因此拆成 exe + bin 分卷；缺少 bin 会安装失败
 
 ### 方式 C：手动安装
 
@@ -223,7 +229,7 @@ build.bat
 ISCC.exe installer.iss
 ```
 
-输出 `release\WatermarkWipe-v1.0.1-win64-Setup.exe`，安装包约 1.4GB。
+输出 `release\WatermarkWipe-v1.0.1-win64-Setup.exe` 和同目录的 `.bin` 分卷，安装包总体积约 2.3GB。
 
 ## 常见问题
 
