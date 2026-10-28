@@ -11,11 +11,11 @@ from pathlib import Path
 import gradio as gr
 import numpy as np
 
+from core.paths import ROOT
 from core.pipeline import OUTPUT_DIR, WatermarkNotFound, WatermarkSRPipeline
 from core.utils import imread_unicode, imwrite_unicode, mask_from_editor, mask_to_rgba, overlay_mask
 from core.video import extract_first_frame, probe_video, process_video
 
-ROOT = Path(__file__).resolve().parent
 pipeline = WatermarkSRPipeline()
 
 CSS = """
@@ -361,7 +361,11 @@ def build_ui() -> gr.Blocks:
                         status_run = gr.Markdown("结果会保存到项目的 output/ 目录。")
 
                 gr.Examples(
-                    examples=[["samples/example1.jpg"], ["samples/example2.jpg"], ["samples/example3.jpg"]],
+                    examples=[
+                        [str(ROOT / "samples" / "example1.jpg")],
+                        [str(ROOT / "samples" / "example2.jpg")],
+                        [str(ROOT / "samples" / "example3.jpg")],
+                    ],
                     inputs=image_in,
                     label="示例图片",
                 )

@@ -17,9 +17,7 @@ from .utils import (
     overlay_mask,
 )
 
-ROOT = Path(__file__).resolve().parent.parent
-MODEL_DIR = ROOT / "models"
-OUTPUT_DIR = ROOT / "output"
+from .paths import MODEL_DIR, OUTPUT_DIR, ROOT
 
 
 class WatermarkNotFound(RuntimeError):

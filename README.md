@@ -47,7 +47,19 @@ start.bat
 > `set HTTPS_PROXY=http://127.0.0.1:7897`
 > 或 `python download_models.py --proxy http://127.0.0.1:7897`
 
-### 方式 B：手动安装
+### 方式 B：直接下载 Windows 安装版 EXE
+
+不想装 Python，可以直接从 [Releases](https://github.com/TLBtianhu/watermark-wipe/releases/latest) 下载 `WatermarkWipe-v1.0.1-win64-Setup.exe`，双击安装。
+
+安装到 `%LOCALAPPDATA%\Programs\WatermarkWipe`，自动创建开始菜单快捷方式（安装时可勾选桌面快捷方式），完成后可直接启动。
+
+- 已内置 4 个模型，离线可用
+- 需要 Windows 10/11 64 位 + 支持 CUDA 12.8 的 NVIDIA 驱动
+- 首次启动约 10–20 秒（加载 PyTorch/CUDA）
+- 处理结果保存在安装目录的 `output/`
+- 如果杀毒软件误报，请添加信任（PyInstaller / 未签名安装器的常见误报）
+
+### 方式 C：手动安装
 
 ```bat
 python -m venv venv
@@ -189,10 +201,29 @@ watermark-wipe/
 ├─ output/                 # 处理结果（不入库）
 ├─ install.bat             # 安装依赖
 ├─ start.bat               # 启动
+├─ build.bat               # 打包 Windows EXE
+├─ WatermarkWipe.spec      # PyInstaller 配置
+├─ installer.iss           # Inno Setup 安装器脚本
 ├─ requirements.txt
 ├─ LICENSE                 # AGPL-3.0
 └─ .gitignore
 ```
+
+## 构建 EXE
+
+```bat
+build.bat
+```
+
+输出在 `dist\WatermarkWipe\`，整个目录可以独立运行。模型和示例会一起打进 `_internal`，所以体积较大（约 5GB），但解压即用、离线可跑。
+
+生成 Windows 安装器需要 [Inno Setup 6](https://jrsoftware.org/isinfo.php)：
+
+```bat
+ISCC.exe installer.iss
+```
+
+输出 `release\WatermarkWipe-v1.0.1-win64-Setup.exe`，安装包约 1.4GB。
 
 ## 常见问题
 
